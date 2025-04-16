@@ -17,18 +17,6 @@ Web 框架：标准库 net/http
 编程语言：Go
 Fscan 工具：开源的 Fscan 项目
 
-目录结构
-plaintext
-fscan-system/
-├── server/
-│   ├── main.go
-│   ├── server_config.yaml
-│   └── deploy_server.sh
-├── agent/
-│   ├── main.go
-│   ├── agent_config.yaml
-│   └── deploy_agent.sh
-└── README.md
 安装与部署
 服务端部署
 克隆项目
