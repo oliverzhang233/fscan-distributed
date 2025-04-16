@@ -1,78 +1,146 @@
-# Fscan 分布式扫描系统
-项目概述
-本项目是一个基于 Fscan 的分布式扫描系统，借助在子公司内网部署 Agent 探针来下发扫描任务，扫描完成后收集结果并上报至总部服务器，总部服务器可同时查看所有扫描结果。系统采用分布式架构，具备任务下发、扫描执行、结果收集和结果展示等功能，满足安全性、可靠性和可扩展性的需求。
 
-系统架构
-总部服务器：负责创建、下发和管理扫描任务，接收并存储各个子公司的扫描结果，同时提供可视化界面供管理员查看。
-子公司 Agent 探针：接收总部服务器下发的扫描任务，使用 Fscan 工具执行扫描，并将结果上报给总部服务器。
-技术选型
-总部服务器：
-操作系统：Linux（如 CentOS、Ubuntu）
-编程语言：Go
-Web 框架：标准库 net/http
-数据库：暂未使用，可根据需求扩展
-消息队列：RabbitMQ
-子公司 Agent 探针：
-操作系统：根据子公司内网环境选择，如 Windows 或 Linux
-编程语言：Go
-Fscan 工具：开源的 Fscan 项目
+# Fscan 分布式扫描系统  
 
-安装与部署
-服务端部署
-克隆项目
-bash
-git clone https://github.com/your-repo/fscan-system.git
+## 项目概述  
+本项目是一个基于 **Fscan** 的分布式扫描系统，通过在子公司内网部署 **Agent 探针** 实现扫描任务的下发与结果收集，最终在总部服务器集中查看扫描结果。系统支持任务分发、分布式扫描、结果汇总等功能，具备高安全性、可靠性和可扩展性，适用于企业级内网安全扫描场景。  
+
+
+## 系统架构  
+```mermaid
+graph TD
+    A[总部服务器] -->|下发任务| B{消息队列 RabbitMQ}
+    B --> C[子公司 Agent 探针]
+    C -->|执行 Fscan 扫描| C
+    C -->|上报结果| B
+    B --> A[总部服务器]
+    A --> D[可视化结果界面]
+```  
+
+
+## 技术选型  
+| 组件                | 技术/工具                | 说明                          |  
+|---------------------|-------------------------|-------------------------------|  
+| 总部服务器语言       | Go                      | 高性能、并发友好，适合服务端开发 |  
+| Agent 端语言         | Go                      | 轻量高效，支持多平台部署        |  
+| 消息队列             | RabbitMQ                | 任务与结果的异步通信            |  
+| 配置文件             | YAML                    | 结构化配置管理                  |  
+| 部署脚本             | Shell                   | 一键构建与启动                  |  
+
+
+## 目录结构  
+```plaintext
+fscan-system/
+├── server/                # 总部服务器代码
+│   ├── main.go            # 服务端主逻辑
+│   ├── server_config.yaml # 服务端配置文件
+│   └── deploy_server.sh   # 服务端部署脚本
+├── agent/                 # Agent 探针代码
+│   ├── main.go            # Agent 主逻辑
+│   ├── agent_config.yaml  # Agent 配置文件
+│   └── deploy_agent.sh    # Agent 部署脚本
+└── README.md              # 项目说明文档
+```  
+
+
+## 部署指南  
+
+
+### 前置条件  
+1. **安装依赖**  
+   - **Go 环境**：`go 1.18+`（[下载 Go](https://go.dev/dl/)）  
+   - **RabbitMQ**：消息队列服务（[安装 RabbitMQ](https://www.rabbitmq.com/download.html)）  
+   - **Fscan 工具**：从 [Fscan 开源仓库](https://github.com/shadow1ng/fscan) 下载对应平台的可执行文件  
+
+
+### 一、总部服务器部署  
+#### 1. 克隆项目  
+```bash
+git clone https://github.com/your-username/fscan-system.git
 cd fscan-system/server
+```  
 
-配置服务端
-编辑 server_config.yaml 文件，根据实际情况修改消息队列和服务器端口配置：
-yaml
-amqp_url: "amqp://guest:guest@localhost:5672/"
-task_queue: "scan_tasks"
-result_queue: "scan_results"
-server_port: 8080
-一键部署
-运行部署脚本：
-bash
+#### 2. 配置文件 `server_config.yaml`  
+```yaml
+amqp_url: "amqp://guest:guest@localhost:5672/"  # RabbitMQ 连接地址
+task_queue: "scan_tasks"                        # 任务队列名称
+result_queue: "scan_results"                    # 结果队列名称
+server_port: 8080                               # 服务端端口
+```  
+
+#### 3. 一键构建与启动  
+```bash
+chmod +x deploy_server.sh
 ./deploy_server.sh
-Agent 端部署
-克隆项目
-bash
-git clone https://github.com/your-repo/fscan-system.git
+```  
+- 服务端启动后监听 `:8080` 端口，提供 `/send_task`（任务下发）和 `/receive_result`（结果接收）接口  
+
+
+### 二、Agent 探针部署  
+#### 1. 克隆项目  
+```bash
+git clone https://github.com/your-username/fscan-system.git
 cd fscan-system/agent
+```  
 
-配置 Agent 端
-编辑 agent_config.yaml 文件，根据实际情况修改消息队列配置：
-yaml
-amqp_url: "amqp://guest:guest@localhost:5672/"
-task_queue: "scan_tasks"
-result_queue: "scan_results"
-放置 Fscan 工具
-将 fscan 可执行文件放置在与 agent 可执行文件相同的目录下，或者放置在系统 PATH 环境变量包含的目录中，如 /usr/local/bin。
+#### 2. 配置文件 `agent_config.yaml`  
+```yaml
+amqp_url: "amqp://guest:guest@localhost:5672/"  # RabbitMQ 连接地址（需与服务端一致）
+task_queue: "scan_tasks"                        # 任务队列名称（需与服务端一致）
+result_queue: "scan_results"                    # 结果队列名称（需与服务端一致）
+```  
 
-一键部署
-运行部署脚本：
-bash
+#### 3. 放置 Fscan 可执行文件  
+- **方案一**：与 Agent 程序同目录  
+  ```plaintext
+  agent/
+  ├── agent          # Agent 可执行文件（构建后生成）
+  ├── fscan          # Fscan 可执行文件（需手动放置）
+  └── ...            # 其他文件
+  ```  
+- **方案二**：系统 `PATH` 目录（如 `/usr/local/bin`）  
+  ```bash
+  sudo cp /path/to/fscan /usr/local/bin/
+  ```  
+
+#### 4. 一键构建与启动  
+```bash
+chmod +x deploy_agent.sh
 ./deploy_agent.sh
+```  
+- Agent 启动后监听 RabbitMQ 任务队列，收到任务后自动执行 Fscan 扫描并上报结果  
 
-使用方法
-任务下发
-向服务端的 /send_task 接口发送 POST 请求，请求体为 JSON 格式，包含扫描任务信息，例如：
-json
-{
-    "host": "192.168.1.1"
-}
 
-结果查看
-服务端接收到 Agent 端上报的扫描结果后，会将结果打印到日志中。你可以根据需求扩展服务端代码，将结果存储到数据库并提供可视化界面进行查看。
+## 使用方法  
+### 1. 下发扫描任务  
+通过 HTTP POST 请求调用服务端接口：  
+```bash
+curl -X POST http://your-server:8080/send_task \
+  -H "Content-Type: application/json" \
+  -d '{"host": "192.168.1.1", "args": "-p 1-1000 -u admin -P password.txt"}'
+```  
+- `host`：目标主机（必填）  
+- `args`：Fscan 扫描参数（选填，默认 `-h` 基础扫描）  
 
-注意事项
-确保消息队列（RabbitMQ）正常运行，并且服务端和 Agent 端能够连接到消息队列。
-在 Agent 端部署时，确保 fscan 工具可正常执行，并且具有相应的权限。
-为了保证系统的安全性，建议在生产环境中对消息队列和服务端进行安全配置，如设置用户名、密码和访问控制。
+### 2. 查看扫描结果  
+服务端接收到结果后打印日志，可扩展数据库存储和可视化界面（如添加 Grafana/Elasticsearch 等组件）。  
 
-贡献与反馈
-如果你在使用过程中遇到问题或有任何建议，欢迎在 GitHub 上提交 Issue 或 Pull Request。
 
-许可证
-本项目采用 MIT 许可证。
+## 安全与优化建议  
+1. **消息队列安全**  
+   - 修改 RabbitMQ 默认账号密码（`guest:guest` 仅用于测试）  
+   - 使用 SSL/TLS 加密通信数据  
+
+2. **Agent 权限控制**  
+   - 限制 Agent 探针的网络访问权限，仅允许与总部服务器和 RabbitMQ 通信  
+   - 在企业内网中通过 VPN/专线部署，避免公网暴露  
+
+3. **高可用性**  
+   - 部署多个 Agent 探针实现负载均衡  
+   - 为 RabbitMQ 和总部服务器添加集群支持  
+
+
+## 贡献与反馈  
+欢迎提交 Issues 反馈问题或建议，也可通过 Pull Requests 参与代码贡献。  
+- GitHub 仓库：[your-username/fscan-system](https://github.com/your-username/fscan-system)  
+
+
