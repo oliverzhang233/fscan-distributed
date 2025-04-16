@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
-	"os/exec"
+	"net/http"
 
 	"github.com/streadway/amqp"
 )
@@ -29,46 +29,34 @@ func initRabbitMQ() (*amqp.Connection, *amqp.Channel, error) {
 	return conn, ch, nil
 }
 
-// 执行 Fscan 扫描
-func executeScan(task map[string]interface{}) (string, error) {
-	host, ok := task["host"].(string)
-	if!ok {
-		return "", fmt.Errorf("invalid host in task")
+// 任务下发处理函数
+func sendTaskHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Invalid request method", http.StatusMethodNotAllowed)
+		return
 	}
-	cmd := exec.Command("fscan", "-h", host)
-	output, err := cmd.CombinedOutput()
-	if err != nil {
-		return "", err
-	}
-	return string(output), nil
-}
-
-// 任务处理回调
-func handleTask(d amqp.Delivery, ch *amqp.Channel) {
 	var task map[string]interface{}
-	err := json.Unmarshal(d.Body, &task)
+	err := json.NewDecoder(r.Body).Decode(&task)
 	if err != nil {
-		log.Printf("Failed to unmarshal task: %v", err)
+		http.Error(w, "Invalid request body", http.StatusBadRequest)
 		return
 	}
-	log.Printf("Received task: %v", task)
-	result, err := executeScan(task)
+	conn, ch, err := initRabbitMQ()
 	if err != nil {
-		log.Printf("Failed to execute scan: %v", err)
+		http.Error(w, "Failed to connect to RabbitMQ", http.StatusInternalServerError)
 		return
 	}
-	resultData := map[string]interface{}{
-		"host":   task["host"],
-		"result": result,
-	}
-	body, err := json.Marshal(resultData)
+	defer conn.Close()
+	defer ch.Close()
+
+	body, err := json.Marshal(task)
 	if err != nil {
-		log.Printf("Failed to marshal result: %v", err)
+		http.Error(w, "Failed to marshal task", http.StatusInternalServerError)
 		return
 	}
 	err = ch.Publish(
 		"",           // exchange
-		resultQueue,  // routing key
+		taskQueue,    // routing key
 		false,        // mandatory
 		false,        // immediate
 		amqp.Publishing{
@@ -76,35 +64,32 @@ func handleTask(d amqp.Delivery, ch *amqp.Channel) {
 			Body:        body,
 		})
 	if err != nil {
-		log.Printf("Failed to publish result: %v", err)
+		http.Error(w, "Failed to publish task", http.StatusInternalServerError)
 		return
 	}
-	log.Printf("Result sent successfully")
+	fmt.Fprintf(w, "Task sent successfully")
+}
+
+// 结果收集处理函数
+func receiveResultHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Invalid request method", http.StatusMethodNotAllowed)
+		return
+	}
+	var result map[string]interface{}
+	err := json.NewDecoder(r.Body).Decode(&result)
+	if err != nil {
+		http.Error(w, "Invalid request body", http.StatusBadRequest)
+		return
+	}
+	// 这里可以将结果存储到数据库
+	log.Printf("Received result: %v", result)
+	fmt.Fprintf(w, "Result received successfully")
 }
 
 func main() {
-	conn, ch, err := initRabbitMQ()
-	if err != nil {
-		log.Fatalf("Failed to connect to RabbitMQ: %v", err)
-	}
-	defer conn.Close()
-	defer ch.Close()
-
-	msgs, err := ch.Consume(
-		taskQueue, // queue
-		"",        // consumer
-		true,      // auto-ack
-		false,     // exclusive
-		false,     // no-local
-		false,     // no-wait
-		nil,       // args
-	)
-	if err != nil {
-		log.Fatalf("Failed to register a consumer: %v", err)
-	}
-
-	log.Println("Waiting for tasks...")
-	for d := range msgs {
-		handleTask(d, ch)
-	}
+	http.HandleFunc("/send_task", sendTaskHandler)
+	http.HandleFunc("/receive_result", receiveResultHandler)
+	log.Println("Server started on :8080")
+	log.Fatal(http.ListenAndServe(":8080", nil))
 }    
