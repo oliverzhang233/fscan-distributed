@@ -1,0 +1,4 @@
+amqp_url: "amqp://guest:guest@localhost:5672/"
+task_queue: "scan_tasks"
+result_queue: "scan_results"
+server_port: 8080    
